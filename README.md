@@ -2,7 +2,7 @@
 
 ![pi-assistant-panel screenshot](assets/screenshot.jpg)
 
-Noctalia assistant panel backed by the Pi coding assistant over `pi --mode rpc`.
+Noctalia assistant panel backed by the Pi coding assistant over `pi --mode rpc`, inspired by the UX I created for [`piclaw`](https://github.com/rcarmo/piclaw).
 
 ## Notes
 

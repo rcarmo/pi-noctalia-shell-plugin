@@ -771,19 +771,20 @@ Item {
     if (!isGenerating && handleSlashCommand(trimmed))
       return true;
 
-    const queueCommand = streamingBehavior === "followUp" ? "follow_up" : (streamingBehavior === "steer" ? "steer" : "send");
-    const payload = { "command": queueCommand, "message": trimmed };
-    if (queueCommand === "send" && streamingBehavior)
+    const payload = { "command": "send", "message": trimmed };
+    if (streamingBehavior)
       payload.streamingBehavior = streamingBehavior;
 
     const started = sendCommand(payload, function (reply) {
       if (reply?.ok) {
-        if (queueCommand === "send") {
+        if (streamingBehavior === "steer") {
+          backendStatus = tr("chat.steeringQueued") || "Steering queued";
+        } else if (streamingBehavior === "followUp") {
+          backendStatus = tr("chat.followUpQueued") || "Follow-up queued";
+        } else {
           appendMessage("user", trimmed);
           isGenerating = true;
           currentResponse = "";
-        } else {
-          backendStatus = queueCommand === "follow_up" ? (tr("chat.followUpQueued") || "Follow-up queued") : (tr("chat.steeringQueued") || "Steering queued");
         }
       } else {
         errorMessage = reply?.error || tr("errors.requestFailed") || "Request failed.";

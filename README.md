@@ -1,5 +1,7 @@
 # pi-assistant-panel
 
+![pi-assistant-panel screenshot](assets/screenshot.jpg)
+
 Noctalia assistant panel backed by the Pi coding assistant over `pi --mode rpc`.
 
 ## Notes

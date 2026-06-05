@@ -7,6 +7,8 @@
   },
   "menu": {
     "openPanel": "Open Panel",
+    "openFloatingWindow": "Open Floating Window",
+    "returnToPanel": "Return to Panel",
     "clearHistory": "Clear History",
     "settings": "Settings"
   },
@@ -17,6 +19,8 @@
     "backendStarting": "Starting Pi backend...",
     "backendRestarting": "Restarting Pi backend...",
     "backendExited": "Pi backend exited",
+    "steeringQueued": "Steering queued",
+    "followUpQueued": "Follow-up queued",
     "generating": "Generating...",
     "modelsLoading": "Loading models...",
     "commandsLoading": "Loading commands...",

@@ -246,6 +246,7 @@ ColumnLayout {
     pluginApi.pluginSettings.scale = root.editScale;
 
     pluginApi.saveSettings();
+    pluginApi.mainInstance?.applySavedPanelSettings();
     pluginApi.mainInstance?.restartBackend();
   }
 }

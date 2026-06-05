@@ -104,6 +104,11 @@ Item {
         "icon": "external-link"
       },
       {
+        "label": (mainInstance?.panelPinned ?? false) ? (pluginApi?.tr("menu.returnToPanel") || "Return to Panel") : (pluginApi?.tr("menu.openFloatingWindow") || "Open Floating Window"),
+        "action": "toggleWindowMode",
+        "icon": (mainInstance?.panelPinned ?? false) ? "panel-right" : "picture-in-picture"
+      },
+      {
         "label": pluginApi?.tr("menu.clearHistory"),
         "action": "clear",
         "icon": "trash"
@@ -123,6 +128,8 @@ Item {
           mainInstance.openPreferredUI(root.screen, root);
         else
           pluginApi?.openPanel(root.screen, root);
+      } else if (action === "toggleWindowMode") {
+        mainInstance?.togglePanelPinned(root.screen);
       } else if (action === "clear") {
         mainInstance?.clearMessages();
       } else if (action === "settings") {

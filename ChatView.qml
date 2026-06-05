@@ -437,7 +437,8 @@ Item {
               anchors.right: parent.right
               anchors.top: toolsHeaderRow.bottom
               anchors.topMargin: Style.marginXS
-              height: (mainInstance?.toolsPanelExpanded ?? true) ? Math.min(320, Math.max(48, toolsColumn.implicitHeight)) : 0
+              readonly property real maxVisibleHeight: Math.max(48, root.height * 0.25)
+              height: (mainInstance?.toolsPanelExpanded ?? true) ? Math.min(maxVisibleHeight, Math.max(48, toolsColumn.implicitHeight)) : 0
               visible: mainInstance?.toolsPanelExpanded ?? true
               contentWidth: width
               contentHeight: Math.max(height, toolsColumn.implicitHeight)
@@ -488,10 +489,10 @@ Item {
                         readOnly: true
                         selectByMouse: true
                         wrapMode: TextEdit.Wrap
-                        textFormat: Text.MarkdownText
+                        textFormat: Text.PlainText
                         color: Color.mOnSurfaceVariant
-                        font.pointSize: Math.max(1, Style.fontSizeXS * Settings.data.ui.fontDefaultScale * Style.uiScaleRatio)
-                        font.family: Settings.data.ui.fontDefault
+                        font.pointSize: Math.max(1, Style.fontSizeXS * Settings.data.ui.fontFixedScale * Style.uiScaleRatio)
+                        font.family: Settings.data.ui.fontFixed || "monospace"
                         onLinkActivated: link => Qt.openUrlExternally(link)
                       }
 
@@ -502,10 +503,10 @@ Item {
                         readOnly: true
                         selectByMouse: true
                         wrapMode: TextEdit.Wrap
-                        textFormat: Text.MarkdownText
+                        textFormat: Text.PlainText
                         color: modelData.isError ? Color.mError : Color.mOnSurfaceVariant
-                        font.pointSize: Math.max(1, Style.fontSizeXS * Settings.data.ui.fontDefaultScale * Style.uiScaleRatio)
-                        font.family: Settings.data.ui.fontDefault
+                        font.pointSize: Math.max(1, Style.fontSizeXS * Settings.data.ui.fontFixedScale * Style.uiScaleRatio)
+                        font.family: Settings.data.ui.fontFixed || "monospace"
                         onLinkActivated: link => Qt.openUrlExternally(link)
                       }
                     }
@@ -582,7 +583,7 @@ Item {
               wrapMode: TextArea.Wrap
               background: null
               selectByMouse: true
-              enabled: !isGenerating && (mainInstance?.backendReady ?? false)
+              enabled: mainInstance?.backendReady ?? false
 
               onTextChanged: {
                 if (root.slashSelectionIndex >= root.slashCommandOptions.length)
@@ -594,8 +595,13 @@ Item {
               }
 
               Keys.onPressed: function (event) {
-                if (!root.slashPopupVisible)
+                if (!root.slashPopupVisible) {
+                  if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
+                    sendMessage(isGenerating ? ((event.modifiers & Qt.AltModifier) ? "followUp" : "steer") : "");
+                    event.accepted = true;
+                  }
                   return;
+                }
                 if (event.key === Qt.Key_Down && root.slashCommandOptions.length > 0) {
                   root.moveSlashSelection(1);
                   event.accepted = true;
@@ -618,7 +624,7 @@ Item {
                 if (event.modifiers & Qt.ShiftModifier) {
                   inputField.insert(inputField.cursorPosition, "\n");
                 } else if (!root.slashPopupVisible) {
-                  sendMessage();
+                  sendMessage(isGenerating ? ((event.modifiers & Qt.AltModifier) ? "followUp" : "steer") : "");
                 }
                 event.accepted = true;
               }
@@ -817,13 +823,14 @@ Item {
     return options.length > 0 ? 0 : -1;
   }
 
-  function sendMessage() {
+  function sendMessage(streamingBehavior) {
     const text = inputField.text.trim();
     if (text === "" || !mainInstance)
       return;
-    mainInstance.sendMessage(text);
-    inputField.text = "";
-    inputField.forceActiveFocus();
+    if (mainInstance.sendMessage(text, streamingBehavior)) {
+      inputField.text = "";
+      inputField.forceActiveFocus();
+    }
   }
 
   function focusInput() {

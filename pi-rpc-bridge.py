@@ -288,7 +288,15 @@ class PiBridgeDaemon:
     def _translate_request(self, request: dict, req_id: str) -> dict | None:
         command = request.get("command")
         if command == "send":
-            return {"id": req_id, "type": "prompt", "message": request.get("message", "")}
+            payload = {"id": req_id, "type": "prompt", "message": request.get("message", "")}
+            streaming_behavior = request.get("streamingBehavior")
+            if streaming_behavior:
+                payload["streamingBehavior"] = streaming_behavior
+            return payload
+        if command == "steer":
+            return {"id": req_id, "type": "steer", "message": request.get("message", "")}
+        if command == "follow_up":
+            return {"id": req_id, "type": "follow_up", "message": request.get("message", "")}
         if command == "abort":
             return {"id": req_id, "type": "abort"}
         if command == "reset_session":

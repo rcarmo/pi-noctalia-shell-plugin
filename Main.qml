@@ -279,11 +279,21 @@ Item {
     pluginApi.saveSettings();
   }
 
-  function togglePanelPinned() {
-    panelPinned = !panelPinned;
-    persistPanelPinned(panelPinned);
+  function setPanelPinned(pinned, persist, preferredScreen) {
+    const nextPinned = !!pinned;
+    const targetScreen = preferredScreen || currentPanelScreen || lastPanelScreen;
+    if (targetScreen)
+      lastPanelScreen = targetScreen;
+    if (panelPinned === nextPinned) {
+      if (nextPinned && !standaloneScreen)
+        openStandaloneWindow(targetScreen);
+      return;
+    }
+    panelPinned = nextPinned;
+    if (persist !== false)
+      persistPanelPinned(panelPinned);
     if (panelPinned) {
-      const screen = currentPanelScreen || lastPanelScreen;
+      const screen = targetScreen;
       if (currentPanelScreen && pluginApi)
         pluginApi.closePanel(currentPanelScreen);
       if (screen)
@@ -293,6 +303,14 @@ Item {
       if (lastPanelScreen && pluginApi)
         pluginApi.openPanel(lastPanelScreen);
     }
+  }
+
+  function applySavedPanelSettings() {
+    setPanelPinned(pluginApi?.pluginSettings?.panelPinned ?? false, false);
+  }
+
+  function togglePanelPinned(screen) {
+    setPanelPinned(!panelPinned, true, screen);
   }
 
   function persistPanelPosition(position) {
@@ -697,39 +715,81 @@ Item {
   }
 
   function summarizeToolPayload(value) {
-    if (value === null || value === undefined)
+    function formatPrimitive(item) {
+      if (item === null || item === undefined)
+        return "";
+      if (typeof item === "string")
+        return item;
+      if (typeof item === "number" || typeof item === "boolean")
+        return String(item);
       return "";
-    if (typeof value === "string")
-      return value;
-    try {
-      return JSON.stringify(value, null, 2);
-    } catch (error) {
-      return String(value);
     }
+
+    function formatValue(item, indent) {
+      const primitive = formatPrimitive(item);
+      if (primitive)
+        return primitive;
+      const prefix = " ".repeat(indent || 0);
+      if (Array.isArray(item)) {
+        const lines = [];
+        for (const entry of item) {
+          const formatted = formatValue(entry, (indent || 0) + 2);
+          if (formatted)
+            lines.push(prefix + "• " + formatted.replace(/\n/g, "\n" + prefix + "  "));
+        }
+        return lines.join("\n");
+      }
+      if (typeof item === "object") {
+        const lines = [];
+        for (const key of Object.keys(item || {})) {
+          const formatted = formatValue(item[key], (indent || 0) + 2);
+          if (!formatted)
+            continue;
+          if (formatted.indexOf("\n") >= 0)
+            lines.push(prefix + key + ":\n" + formatted);
+          else
+            lines.push(prefix + key + ": " + formatted);
+        }
+        return lines.join("\n");
+      }
+      return String(item || "");
+    }
+
+    return formatValue(value, 0).trim();
   }
 
-  function sendMessage(text) {
+  function sendMessage(text, streamingBehavior) {
     const trimmed = (text || "").trim();
-    if (!trimmed || isGenerating)
-      return;
+    if (!trimmed)
+      return false;
     errorMessage = "";
     if (!backendReady && !startingBackend) {
       restartBackend();
       errorMessage = tr("errors.backendUnavailable") || "Pi backend is not ready yet.";
-      return;
+      return false;
     }
-    if (handleSlashCommand(trimmed))
-      return;
-    resetTransientPanels();
-    sendCommand({ "command": "send", "message": trimmed }, function (reply) {
+    if (!isGenerating && handleSlashCommand(trimmed))
+      return true;
+
+    const queueCommand = streamingBehavior === "followUp" ? "follow_up" : (streamingBehavior === "steer" ? "steer" : "send");
+    const payload = { "command": queueCommand, "message": trimmed };
+    if (queueCommand === "send" && streamingBehavior)
+      payload.streamingBehavior = streamingBehavior;
+
+    const started = sendCommand(payload, function (reply) {
       if (reply?.ok) {
-        appendMessage("user", trimmed);
-        isGenerating = true;
-        currentResponse = "";
+        if (queueCommand === "send") {
+          appendMessage("user", trimmed);
+          isGenerating = true;
+          currentResponse = "";
+        } else {
+          backendStatus = queueCommand === "follow_up" ? (tr("chat.followUpQueued") || "Follow-up queued") : (tr("chat.steeringQueued") || "Steering queued");
+        }
       } else {
         errorMessage = reply?.error || tr("errors.requestFailed") || "Request failed.";
       }
     });
+    return started;
   }
 
   function stopGeneration() {

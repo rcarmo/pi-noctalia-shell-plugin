@@ -1,86 +1,60 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Wayland
 import qs.Commons
 
-PanelWindow {
+FloatingWindow {
   id: root
 
-  required property ShellScreen screen
   property var pluginApi: null
   property var mainInstance: null
 
+  title: "Pi Assistant"
   color: "transparent"
   visible: true
 
-  WlrLayershell.layer: WlrLayer.Top
-  WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
-  WlrLayershell.exclusionMode: ExclusionMode.Ignore
-  WlrLayershell.namespace: "noctalia-pi-assistant-standalone-" + (screen?.name || "unknown")
-
-  anchors.top: true
-  anchors.left: true
-  anchors.right: true
-  anchors.bottom: true
-
   readonly property int panelWidth: pluginApi?.pluginSettings?.panelWidth ?? 520
   readonly property real panelHeightRatio: pluginApi?.pluginSettings?.panelHeightRatio ?? 0.85
-  readonly property string panelPosition: (pluginApi?.pluginSettings?.panelPosition ?? "right")
   readonly property real uiScale: pluginApi?.pluginSettings?.scale ?? 1
-  readonly property real contentWidth: panelWidth
-  readonly property real contentHeight: screen ? (screen.height * panelHeightRatio) : 620 * Style.uiScaleRatio
-  readonly property real panelX: {
-    const margin = Style.marginL * 2;
-    if (!screen)
-      return margin;
-    if (panelPosition === "left")
-      return margin;
-    if (panelPosition === "center")
-      return Math.round((screen.width - contentWidth) / 2);
-    if (panelPosition === "top" || panelPosition === "bottom")
-      return Math.round((screen.width - contentWidth) / 2);
-    return Math.round(screen.width - contentWidth - margin);
-  }
-  readonly property real panelY: {
-    const margin = Style.marginL * 2;
-    if (!screen)
-      return margin;
-    if (panelPosition === "top")
-      return margin;
-    if (panelPosition === "bottom")
-      return Math.round(screen.height - contentHeight - margin);
-    return Math.round((screen.height - contentHeight) / 2);
+  readonly property real dragHandleHeight: Math.max(18 * Style.uiScaleRatio, Style.marginL)
+  readonly property real initialHeight: screen ? (screen.height * panelHeightRatio) : 620 * Style.uiScaleRatio
+
+  minimumSize: Qt.size(320 * Style.uiScaleRatio, 360 * Style.uiScaleRatio)
+  implicitWidth: Math.round(panelWidth)
+  implicitHeight: Math.round(initialHeight)
+
+  function persistSize() {
+    if (!pluginApi)
+      return;
+    pluginApi.pluginSettings.panelWidth = Math.round(root.width || root.implicitWidth);
+    if (screen && screen.height > 0)
+      pluginApi.pluginSettings.panelHeightRatio = Math.max(0.1, Math.min(1, (root.height || root.implicitHeight) / screen.height));
+    pluginApi.saveSettings();
   }
 
-  mask: Region {
-    x: 0
-    y: 0
-    width: root.width
-    height: root.height
-    intersection: Intersection.Xor
-
-    Region {
-      x: root.panelX
-      y: root.panelY
-      width: root.contentWidth
-      height: root.contentHeight
-      intersection: Intersection.Subtract
-      radius: Style.radiusL
-    }
+  Timer {
+    id: persistSizeTimer
+    interval: 350
+    repeat: false
+    onTriggered: root.persistSize()
   }
+
+  onWidthChanged: persistSizeTimer.restart()
+  onHeightChanged: persistSizeTimer.restart()
 
   Rectangle {
-    x: root.panelX
-    y: root.panelY
-    width: root.contentWidth
-    height: root.contentHeight
+    anchors.fill: parent
     radius: Style.radiusL
     color: Color.mSurfaceVariant
     clip: true
 
     Item {
-      anchors.fill: parent
+      id: scaledContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.bottom: parent.bottom
+      anchors.topMargin: root.dragHandleHeight
       property real s: root.uiScale
 
       Item {
@@ -97,6 +71,114 @@ PanelWindow {
           mainInstance: root.mainInstance
         }
       }
+    }
+
+    Rectangle {
+      id: dragHandle
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      height: root.dragHandleHeight
+      color: dragArea.pressed ? Color.mHover : "transparent"
+      radius: Style.radiusL
+
+      Rectangle {
+        width: 48 * Style.uiScaleRatio
+        height: Math.max(3, 3 * Style.uiScaleRatio)
+        radius: height / 2
+        anchors.centerIn: parent
+        color: Color.mOnSurfaceVariant
+        opacity: dragArea.containsMouse || dragArea.pressed ? 0.55 : 0.28
+      }
+
+      MouseArea {
+        id: dragArea
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton
+        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        onPressed: root.startSystemMove()
+      }
+    }
+
+    MouseArea {
+      anchors.left: parent.left
+      anchors.top: parent.top
+      anchors.bottom: parent.bottom
+      width: 8 * Style.uiScaleRatio
+      cursorShape: Qt.SizeHorCursor
+      acceptedButtons: Qt.LeftButton
+      onPressed: root.startSystemResize(Qt.LeftEdge)
+    }
+
+    MouseArea {
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.bottom: parent.bottom
+      width: 8 * Style.uiScaleRatio
+      cursorShape: Qt.SizeHorCursor
+      acceptedButtons: Qt.LeftButton
+      onPressed: root.startSystemResize(Qt.RightEdge)
+    }
+
+    MouseArea {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      height: 8 * Style.uiScaleRatio
+      cursorShape: Qt.SizeVerCursor
+      acceptedButtons: Qt.LeftButton
+      onPressed: root.startSystemResize(Qt.TopEdge)
+    }
+
+    MouseArea {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      height: 8 * Style.uiScaleRatio
+      cursorShape: Qt.SizeVerCursor
+      acceptedButtons: Qt.LeftButton
+      onPressed: root.startSystemResize(Qt.BottomEdge)
+    }
+
+    MouseArea {
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      width: 18 * Style.uiScaleRatio
+      height: 18 * Style.uiScaleRatio
+      cursorShape: Qt.SizeFDiagCursor
+      acceptedButtons: Qt.LeftButton
+      onPressed: root.startSystemResize(Qt.RightEdge | Qt.BottomEdge)
+    }
+
+    MouseArea {
+      anchors.left: parent.left
+      anchors.bottom: parent.bottom
+      width: 18 * Style.uiScaleRatio
+      height: 18 * Style.uiScaleRatio
+      cursorShape: Qt.SizeBDiagCursor
+      acceptedButtons: Qt.LeftButton
+      onPressed: root.startSystemResize(Qt.LeftEdge | Qt.BottomEdge)
+    }
+
+    MouseArea {
+      anchors.right: parent.right
+      anchors.top: parent.top
+      width: 18 * Style.uiScaleRatio
+      height: 18 * Style.uiScaleRatio
+      cursorShape: Qt.SizeBDiagCursor
+      acceptedButtons: Qt.LeftButton
+      onPressed: root.startSystemResize(Qt.RightEdge | Qt.TopEdge)
+    }
+
+    MouseArea {
+      anchors.left: parent.left
+      anchors.top: parent.top
+      width: 18 * Style.uiScaleRatio
+      height: 18 * Style.uiScaleRatio
+      cursorShape: Qt.SizeFDiagCursor
+      acceptedButtons: Qt.LeftButton
+      onPressed: root.startSystemResize(Qt.LeftEdge | Qt.TopEdge)
     }
   }
 }

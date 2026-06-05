@@ -32,6 +32,7 @@ Item {
   property bool modelsLoading: false
   property bool commandsLoading: false
   property bool modelChangeInProgress: false
+  property int backendRetryAttempts: 0
 
   property var pendingCommandCallback: null
   property string pendingCommandName: ""
@@ -444,6 +445,8 @@ Item {
   function startBackend() {
     if (!helperPath || !pluginDir)
       return;
+    if (startingBackend)
+      return;
     ensureCacheDir();
     startingBackend = true;
     backendReady = false;
@@ -461,7 +464,28 @@ Item {
     stateRefreshTimer.restart();
   }
 
-  function restartBackend() {
+  function markBackendReady() {
+    backendRetryAttempts = 0;
+    backendRetryTimer.stop();
+  }
+
+  function scheduleBackendRetry(reason) {
+    if (backendReady || backendRetryTimer.running)
+      return;
+    startingBackend = false;
+    backendRetryAttempts += 1;
+    const delay = Math.min(15000, 1000 * Math.pow(2, Math.min(backendRetryAttempts - 1, 4)));
+    backendRetryTimer.interval = delay;
+    backendStatus = (tr("chat.backendRetrying") || "Backend not ready; retrying") + " (" + Math.round(delay / 1000) + "s)";
+    if (reason)
+      Logger.w("[pi-assistant-panel] scheduling backend retry:", reason);
+    backendRetryTimer.restart();
+  }
+
+  function restartBackend(resetRetryAttempts) {
+    if (resetRetryAttempts !== false)
+      backendRetryAttempts = 0;
+    startingBackend = false;
     backendReady = false;
     isGenerating = false;
     currentResponse = "";
@@ -749,8 +773,12 @@ Item {
 
   function refreshState() {
     sendCommand({ "command": "get_state" }, function (reply) {
-      if (!reply?.ok)
+      if (!reply?.ok) {
+        const message = reply?.error || "";
+        if (message.indexOf("pi-backend-not-running") >= 0 || message.indexOf("cannot-connect") >= 0 || message.indexOf("backend") >= 0)
+          scheduleBackendRetry(message);
         return;
+      }
       const state = reply.state ?? reply.response?.data ?? {};
       backendReady = state.backendReady ?? true;
       backendCwd = state.cwd ?? backendCwd;
@@ -759,10 +787,13 @@ Item {
       backendThinkingLevel = state.thinkingLevel ?? backendThinkingLevel;
       backendStatus = backendReady ? (tr("chat.backendReady") || "Backend ready") : (tr("chat.backendNotReady") || "Backend not ready");
       if (backendReady) {
+        markBackendReady();
         modelRefreshTimer.restart();
         commandRefreshTimer.restart();
         statsRefreshTimer.restart();
         historyRefreshTimer.restart();
+      } else {
+        scheduleBackendRetry(state.lastError || "backend not running");
       }
     });
   }
@@ -781,11 +812,17 @@ Item {
         backendModelInfo = event.state?.model ?? backendModelInfo;
         backendModel = stringifyModel(event.state?.model) || backendModel;
         backendThinkingLevel = event.state?.thinkingLevel || backendThinkingLevel;
-        backendStatus = tr("chat.backendReady") || "Backend ready";
-        modelRefreshTimer.restart();
-        commandRefreshTimer.restart();
-        statsRefreshTimer.restart();
-        historyRefreshTimer.restart();
+        if (backendReady) {
+          markBackendReady();
+          backendStatus = tr("chat.backendReady") || "Backend ready";
+          modelRefreshTimer.restart();
+          commandRefreshTimer.restart();
+          statsRefreshTimer.restart();
+          historyRefreshTimer.restart();
+        } else {
+          backendStatus = tr("chat.backendNotReady") || "Backend not ready";
+          scheduleBackendRetry(event.state?.lastError || "backend not running");
+        }
       } else if (type === "agent_start") {
         isGenerating = true;
         resetTransientPanels();
@@ -846,6 +883,7 @@ Item {
         if (backendFailure) {
           backendReady = false;
           backendStatus = tr("chat.backendNotReady") || "Backend not ready";
+          scheduleBackendRetry(message);
         } else {
           backendStatus = backendReady ? (tr("chat.backendReady") || "Backend ready") : (tr("chat.backendNotReady") || "Backend not ready");
         }
@@ -863,7 +901,7 @@ Item {
         availableModels = [];
         availableCommands = builtinSlashCommands();
         backendStatus = tr("chat.backendExited") || "Backend exited";
-        backendRetryTimer.restart();
+        scheduleBackendRetry("backend exited");
       }
     } catch (error) {
       Logger.w("[pi-assistant-panel] invalid helper event:", text, error);
@@ -929,7 +967,7 @@ Item {
     repeat: false
     onTriggered: {
       if (!root.backendReady)
-        root.startBackend();
+        root.restartBackend(false);
     }
   }
 
@@ -1044,7 +1082,7 @@ Item {
         root.availableModels = [];
         root.availableCommands = root.builtinSlashCommands();
         root.backendStatus = root.tr("chat.backendNotReady") || "Backend not ready";
-        root.backendRetryTimer.restart();
+        root.scheduleBackendRetry("event subscriber exited with code " + exitCode);
       }
     }
   }

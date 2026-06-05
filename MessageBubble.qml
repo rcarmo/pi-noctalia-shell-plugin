@@ -12,6 +12,8 @@ Item {
 
   readonly property int bubblePadding: Style.marginM
   readonly property int copyButtonSize: 28
+  readonly property real maxUserBubbleWidth: width * 0.8
+  readonly property real userBubbleWidth: Math.min(maxUserBubbleWidth, Math.max(72 * Style.uiScaleRatio, userTextMetrics.width + (bubblePadding * 2) + (message?.isStreaming ? 0 : copyButtonSize + Style.marginS)))
   readonly property var segments: buildSegments(message?.content || "")
 
   signal copyRequested(string text)
@@ -84,6 +86,14 @@ Item {
     return next;
   }
 
+  TextMetrics {
+    id: userTextMetrics
+    text: message?.role === "user" ? (message?.content || "") : ""
+    font.family: Settings.data.ui.fontDefault
+    font.pointSize: Math.max(1, Style.fontSizeM * Settings.data.ui.fontDefaultScale * Style.uiScaleRatio)
+    font.weight: Style.fontWeightMedium
+  }
+
   RowLayout {
     id: mainLayout
     anchors.left: parent.left
@@ -109,8 +119,8 @@ Item {
     Rectangle {
       id: bubbleRect
       Layout.fillWidth: message.role === "assistant"
-      Layout.maximumWidth: message.role === "assistant" ? parent.width : (parent.width * 0.8)
-      Layout.preferredWidth: message.role === "assistant" ? parent.width : (parent.width * 0.8)
+      Layout.maximumWidth: message.role === "assistant" ? parent.width : root.maxUserBubbleWidth
+      Layout.preferredWidth: message.role === "assistant" ? parent.width : root.userBubbleWidth
       Layout.preferredHeight: contentCol.implicitHeight + (root.bubblePadding * 2)
       color: message.role === "user" ? Color.mSurfaceVariant : Color.mSurface
       radius: Style.radiusM

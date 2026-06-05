@@ -1,0 +1,15 @@
+# Local runtime/settings
+settings.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Editor/OS noise
+.DS_Store
+*.swp
+*~
+
+# Noctalia/Pi local state
+.piclaw/
+.pi/tmp/

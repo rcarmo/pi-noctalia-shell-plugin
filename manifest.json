@@ -1,0 +1,44 @@
+{
+  "id": "pi-assistant-panel",
+  "name": "Pi Assistant Panel",
+  "version": "0.1.0",
+  "minNoctaliaVersion": "4.4.0",
+  "author": "Rui Carmo",
+  "license": "MIT",
+  "description": "Noctalia assistant panel backed by the Pi coding assistant RPC mode",
+  "tags": [
+    "Bar",
+    "Panel",
+    "AI",
+    "Productivity",
+    "Developer"
+  ],
+  "entryPoints": {
+    "main": "Main.qml",
+    "barWidget": "BarWidget.qml",
+    "panel": "Panel.qml",
+    "settings": "Settings.qml"
+  },
+  "dependencies": {
+    "plugins": []
+  },
+  "metadata": {
+    "defaultSettings": {
+      "maxHistoryLength": 100,
+      "panelDetached": true,
+      "panelPosition": "right",
+      "panelHeightRatio": 0.85,
+      "panelWidth": 520,
+      "scale": 1,
+      "panelPinned": false,
+      "ai": {
+        "piCommand": "pi",
+        "model": "",
+        "thinkingLevel": "medium",
+        "toolsMode": "none",
+        "persistentSession": false,
+        "sessionName": "Noctalia Pi Assistant"
+      }
+    }
+  }
+}

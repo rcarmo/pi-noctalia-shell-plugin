@@ -84,6 +84,70 @@ Item {
               if (entry?.key && entry.key !== root.model)
                 mainInstance?.setActiveModel(entry.key);
             }
+
+            contentItem: Text {
+              leftPadding: Style.marginS
+              rightPadding: Style.marginL + Style.marginM
+              text: modelSelector.displayText
+              color: modelSelector.enabled ? Color.mOnSurface : Color.mOnSurfaceVariant
+              font: modelSelector.font
+              verticalAlignment: Text.AlignVCenter
+              elide: Text.ElideRight
+            }
+
+            indicator: NIcon {
+              x: modelSelector.width - width - Style.marginS
+              y: Math.round((modelSelector.height - height) / 2)
+              icon: "chevron-down"
+              color: modelSelector.enabled ? Color.mOnSurfaceVariant : Qt.alpha(Color.mOnSurfaceVariant, 0.5)
+              pointSize: Style.fontSizeS
+              applyUiScale: false
+            }
+
+            background: Rectangle {
+              implicitHeight: 32 * Style.uiScaleRatio
+              radius: Style.radiusS
+              color: modelSelector.enabled ? Color.mSurface : Qt.alpha(Color.mSurface, 0.55)
+              border.color: modelSelector.activeFocus ? Color.mPrimary : Qt.alpha(Color.mOnSurfaceVariant, 0.22)
+              border.width: 1
+            }
+
+            delegate: ItemDelegate {
+              width: modelSelector.width
+              highlighted: modelSelector.highlightedIndex === index
+              contentItem: Text {
+                text: modelData?.name || ""
+                color: highlighted ? Color.mPrimary : Color.mOnSurface
+                font: modelSelector.font
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+              }
+              background: Rectangle {
+                color: highlighted ? Qt.alpha(Color.mPrimary, 0.16) : "transparent"
+              }
+            }
+
+            popup: Popup {
+              y: modelSelector.height + 2
+              width: modelSelector.width
+              implicitHeight: Math.min(contentItem.implicitHeight, 260 * Style.uiScaleRatio)
+              padding: 1
+
+              contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: modelSelector.popup.visible ? modelSelector.delegateModel : null
+                currentIndex: modelSelector.highlightedIndex
+                ScrollBar.vertical: ScrollBar {}
+              }
+
+              background: Rectangle {
+                radius: Style.radiusS
+                color: Color.mSurface
+                border.color: Qt.alpha(Color.mOnSurfaceVariant, 0.24)
+                border.width: 1
+              }
+            }
           }
 
           ComboBox {
@@ -99,6 +163,70 @@ Item {
               const entry = root.thinkingOptions[index];
               if (entry?.key && entry.key !== root.activeThinkingLevel)
                 mainInstance?.setActiveThinkingLevel(entry.key);
+            }
+
+            contentItem: Text {
+              leftPadding: Style.marginS
+              rightPadding: Style.marginL + Style.marginM
+              text: thinkingSelector.displayText
+              color: thinkingSelector.enabled ? Color.mOnSurface : Color.mOnSurfaceVariant
+              font: thinkingSelector.font
+              verticalAlignment: Text.AlignVCenter
+              elide: Text.ElideRight
+            }
+
+            indicator: NIcon {
+              x: thinkingSelector.width - width - Style.marginS
+              y: Math.round((thinkingSelector.height - height) / 2)
+              icon: "chevron-down"
+              color: thinkingSelector.enabled ? Color.mOnSurfaceVariant : Qt.alpha(Color.mOnSurfaceVariant, 0.5)
+              pointSize: Style.fontSizeS
+              applyUiScale: false
+            }
+
+            background: Rectangle {
+              implicitHeight: 32 * Style.uiScaleRatio
+              radius: Style.radiusS
+              color: thinkingSelector.enabled ? Color.mSurface : Qt.alpha(Color.mSurface, 0.55)
+              border.color: thinkingSelector.activeFocus ? Color.mPrimary : Qt.alpha(Color.mOnSurfaceVariant, 0.22)
+              border.width: 1
+            }
+
+            delegate: ItemDelegate {
+              width: thinkingSelector.width
+              highlighted: thinkingSelector.highlightedIndex === index
+              contentItem: Text {
+                text: modelData?.name || ""
+                color: highlighted ? Color.mPrimary : Color.mOnSurface
+                font: thinkingSelector.font
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+              }
+              background: Rectangle {
+                color: highlighted ? Qt.alpha(Color.mPrimary, 0.16) : "transparent"
+              }
+            }
+
+            popup: Popup {
+              y: thinkingSelector.height + 2
+              width: thinkingSelector.width
+              implicitHeight: Math.min(contentItem.implicitHeight, 220 * Style.uiScaleRatio)
+              padding: 1
+
+              contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: thinkingSelector.popup.visible ? thinkingSelector.delegateModel : null
+                currentIndex: thinkingSelector.highlightedIndex
+                ScrollBar.vertical: ScrollBar {}
+              }
+
+              background: Rectangle {
+                radius: Style.radiusS
+                color: Color.mSurface
+                border.color: Qt.alpha(Color.mOnSurfaceVariant, 0.24)
+                border.width: 1
+              }
             }
           }
         }

@@ -37,6 +37,7 @@
     "emptyHint": "Ask the Pi coding assistant anything",
     "placeholder": "Type a message...",
     "send": "Send",
+    "steer": "Steer current response",
     "stop": "Stop generation",
     "clearHistory": "Clear history",
     "copy": "Copy"

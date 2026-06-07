@@ -37,6 +37,8 @@ Item {
 
   property var pendingCommandCallback: null
   property string pendingCommandName: ""
+  property var pendingControlCommandCallback: null
+  property string pendingControlCommandName: ""
 
   readonly property var aiSettings: pluginApi?.pluginSettings?.ai ?? pluginApi?.manifest?.metadata?.defaultSettings?.ai ?? ({})
   readonly property int maxHistoryLength: pluginApi?.pluginSettings?.maxHistoryLength ?? pluginApi?.manifest?.metadata?.defaultSettings?.maxHistoryLength ?? 100
@@ -542,6 +544,16 @@ Item {
     return true;
   }
 
+  function sendControlCommand(payload, callback) {
+    if (controlCommandProcess.running)
+      return false;
+    pendingControlCommandCallback = callback || null;
+    pendingControlCommandName = payload?.command || "";
+    controlCommandProcess.command = helperCommandArgs("command", payload, 5);
+    controlCommandProcess.running = true;
+    return true;
+  }
+
   function appendMessage(role, content) {
     const newMessage = {
       "id": Date.now().toString() + "-" + Math.round(Math.random() * 10000),
@@ -780,21 +792,23 @@ Item {
     if (!isGenerating && handleSlashCommand(trimmed))
       return true;
 
-    const payload = { "command": "send", "message": trimmed };
-    if (streamingBehavior)
-      payload.streamingBehavior = streamingBehavior;
+    if (isGenerating && (streamingBehavior === "steer" || streamingBehavior === "followUp")) {
+      const controlCommand = streamingBehavior === "followUp" ? "follow_up" : "steer";
+      return sendControlCommand({ "command": controlCommand, "message": trimmed }, function (reply) {
+        if (reply?.ok) {
+          backendStatus = streamingBehavior === "followUp" ? (tr("chat.followUpQueued") || "Follow-up queued") : (tr("chat.steeringQueued") || "Steering queued");
+        } else {
+          errorMessage = reply?.error || tr("errors.requestFailed") || "Request failed.";
+        }
+      });
+    }
 
+    const payload = { "command": "send", "message": trimmed };
     const started = sendCommand(payload, function (reply) {
       if (reply?.ok) {
-        if (streamingBehavior === "steer") {
-          backendStatus = tr("chat.steeringQueued") || "Steering queued";
-        } else if (streamingBehavior === "followUp") {
-          backendStatus = tr("chat.followUpQueued") || "Follow-up queued";
-        } else {
-          appendMessage("user", trimmed);
-          isGenerating = true;
-          currentResponse = "";
-        }
+        appendMessage("user", trimmed);
+        isGenerating = true;
+        currentResponse = "";
       } else {
         errorMessage = reply?.error || tr("errors.requestFailed") || "Request failed.";
       }
@@ -805,7 +819,7 @@ Item {
   function stopGeneration() {
     if (!isGenerating)
       return;
-    sendCommand({ "command": "abort" }, function (reply) {
+    sendControlCommand({ "command": "abort" }, function (reply) {
       if (!reply?.ok && !errorMessage)
         errorMessage = reply?.error || tr("errors.requestFailed") || "Request failed.";
     });
@@ -1134,6 +1148,59 @@ Item {
         commandProcess.lastCommandStderr = text.trim();
         if (commandProcess.lastCommandStderr)
           Logger.w("[pi-assistant-panel]", commandProcess.lastCommandStderr);
+      }
+    }
+  }
+
+  readonly property Process controlCommandProcess: Process {
+    running: false
+
+    onExited: function (exitCode, exitStatus) {
+      if (exitCode !== 0 && root.pendingControlCommandCallback) {
+        root.pendingControlCommandCallback({
+          "ok": false,
+          "error": controlCommandProcess.lastCommandStdout || controlCommandProcess.lastCommandStderr || ("helper exited with code " + exitCode)
+        });
+      }
+      root.pendingControlCommandCallback = null;
+      root.pendingControlCommandName = "";
+      controlCommandProcess.lastCommandStdout = "";
+      controlCommandProcess.lastCommandStderr = "";
+    }
+
+    property string lastCommandStdout: ""
+    property string lastCommandStderr: ""
+
+    stdout: StdioCollector {
+      onStreamFinished: {
+        controlCommandProcess.lastCommandStdout = text.trim();
+        if (!controlCommandProcess.lastCommandStdout)
+          return;
+        try {
+          const reply = JSON.parse(controlCommandProcess.lastCommandStdout);
+          if (root.pendingControlCommandCallback) {
+            const callback = root.pendingControlCommandCallback;
+            root.pendingControlCommandCallback = null;
+            callback(reply);
+          }
+        } catch (error) {
+          if (root.pendingControlCommandCallback) {
+            const callback = root.pendingControlCommandCallback;
+            root.pendingControlCommandCallback = null;
+            callback({
+              "ok": false,
+              "error": controlCommandProcess.lastCommandStdout
+            });
+          }
+        }
+      }
+    }
+
+    stderr: StdioCollector {
+      onStreamFinished: {
+        controlCommandProcess.lastCommandStderr = text.trim();
+        if (controlCommandProcess.lastCommandStderr)
+          Logger.w("[pi-assistant-panel]", controlCommandProcess.lastCommandStderr);
       }
     }
   }

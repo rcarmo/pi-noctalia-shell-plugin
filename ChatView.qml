@@ -760,16 +760,17 @@ Item {
           }
 
           NIconButton {
-            icon: isGenerating ? "player-stop" : "send"
-            colorFg: isGenerating ? Color.mError : (inputField.text.trim() !== "" ? Color.mPrimary : Color.mOnSurfaceVariant)
-            enabled: isGenerating || (inputField.text.trim() !== "" && (mainInstance?.backendReady ?? false))
-            tooltipText: isGenerating ? pluginApi?.tr("chat.stop") : pluginApi?.tr("chat.send")
+            readonly property bool hasInput: inputField.text.trim() !== ""
+            readonly property bool stopsGeneration: isGenerating && !hasInput
+            icon: stopsGeneration ? "player-stop" : "send"
+            colorFg: stopsGeneration ? Color.mError : (hasInput ? Color.mPrimary : Color.mOnSurfaceVariant)
+            enabled: stopsGeneration || (hasInput && (mainInstance?.backendReady ?? false))
+            tooltipText: stopsGeneration ? pluginApi?.tr("chat.stop") : (isGenerating ? (pluginApi?.tr("chat.steer") || "Steer") : pluginApi?.tr("chat.send"))
             onClicked: {
-              if (isGenerating) {
+              if (stopsGeneration)
                 mainInstance?.stopGeneration();
-              } else {
-                sendMessage();
-              }
+              else
+                sendMessage(isGenerating ? "steer" : "");
             }
           }
         }

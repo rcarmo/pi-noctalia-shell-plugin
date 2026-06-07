@@ -18,6 +18,7 @@
     "backendNotReady": "Backend not ready",
     "backendStarting": "Starting Pi backend...",
     "backendRestarting": "Restarting Pi backend...",
+    "backendRetrying": "Pi backend not ready; retrying",
     "backendExited": "Pi backend exited",
     "steeringQueued": "Steering queued",
     "followUpQueued": "Follow-up queued",

@@ -71,6 +71,9 @@ class PiBridgeDaemon:
         self.current_thinking = args.thinking or "medium"
         self.current_tools_mode = args.tools_mode
         self.start_cwd = ""
+        self.pi_restart_attempts = 0
+        self.pi_restart_timer: threading.Timer | None = None
+        self.pi_start_lock = threading.Lock()
 
     def acquire_lock(self) -> bool:
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,29 +108,69 @@ class PiBridgeDaemon:
         command.extend(["--name", self.args.session_name])
         return command
 
-    def start_pi(self) -> None:
-        cmd = self.build_pi_command()
-        start_cwd = Path.home() / "Build"
-        chosen_cwd = start_cwd if start_cwd.is_dir() else Path.home()
-        self.start_cwd = str(chosen_cwd)
-        self.pi_proc = subprocess.Popen(
-            cmd,
-            cwd=self.start_cwd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-        )
-        threading.Thread(target=self._read_pi_stdout, name="pi-rpc-stdout", daemon=True).start()
-        threading.Thread(target=self._read_pi_stderr, name="pi-rpc-stderr", daemon=True).start()
-        self.broadcast(
-            {
-                "type": "ready",
-                "state": self.snapshot_state(),
-                "detail": "Pi RPC backend started.",
-            }
-        )
+    def start_pi(self) -> bool:
+        with self.pi_start_lock:
+            if not self.running:
+                return False
+            if self.pi_proc and self.pi_proc.poll() is None:
+                return True
+            cmd = self.build_pi_command()
+            start_cwd = Path.home() / "Build"
+            chosen_cwd = start_cwd if start_cwd.is_dir() else Path.home()
+            self.start_cwd = str(chosen_cwd)
+            self.backend_started_at = now()
+            self.current_response = ""
+            self.is_generating = False
+            try:
+                self.pi_proc = subprocess.Popen(
+                    cmd,
+                    cwd=self.start_cwd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,
+                )
+            except Exception as exc:
+                self.pi_proc = None
+                self.last_error = f"Failed to start Pi RPC backend: {exc}"
+                self.broadcast({"type": "error", "message": self.last_error, "state": self.snapshot_state()})
+                self.schedule_pi_restart(self.last_error)
+                return False
+            self.pi_restart_attempts = 0
+            self.pi_restart_timer = None
+            threading.Thread(target=self._read_pi_stdout, name="pi-rpc-stdout", daemon=True).start()
+            threading.Thread(target=self._read_pi_stderr, name="pi-rpc-stderr", daemon=True).start()
+            self.broadcast(
+                {
+                    "type": "ready",
+                    "state": self.snapshot_state(),
+                    "detail": "Pi RPC backend started.",
+                }
+            )
+            return True
+
+    def schedule_pi_restart(self, reason: str = "") -> None:
+        if not self.running:
+            return
+        if self.pi_restart_timer and self.pi_restart_timer.is_alive():
+            return
+        delay = min(30.0, 1.0 * (2 ** min(self.pi_restart_attempts, 5)))
+        self.pi_restart_attempts += 1
+        message = f"Pi backend unavailable; restarting in {delay:.0f}s."
+        if reason:
+            message += f" ({reason})"
+        self.broadcast({"type": "status", "message": message, "state": self.snapshot_state()})
+        timer = threading.Timer(delay, self._restart_pi_after_delay)
+        timer.daemon = True
+        self.pi_restart_timer = timer
+        timer.start()
+
+    def _restart_pi_after_delay(self) -> None:
+        if not self.running:
+            return
+        self.stop_pi()
+        self.start_pi()
 
     def snapshot_state(self) -> dict:
         return {
@@ -203,6 +246,7 @@ class PiBridgeDaemon:
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.server.bind(str(self.socket_path))
         self.server.listen(16)
+        self.server.settimeout(1.0)
         os.chmod(self.socket_path, 0o600)
 
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -213,6 +257,8 @@ class PiBridgeDaemon:
         while self.running:
             try:
                 conn, _ = self.server.accept()
+            except socket.timeout:
+                continue
             except OSError:
                 if self.running:
                     continue
@@ -338,7 +384,9 @@ class PiBridgeDaemon:
                         conn.close()
                     except OSError:
                         pass
-            self.broadcast({"type": "error", "message": "Pi backend is not running."})
+            self.last_error = "Pi backend is not running."
+            self.broadcast({"type": "error", "message": self.last_error, "state": self.snapshot_state()})
+            self.schedule_pi_restart(self.last_error)
             return
         proc.stdin.write(json_dumps(payload) + "\n")
         proc.stdin.flush()
@@ -387,13 +435,20 @@ class PiBridgeDaemon:
                 self._handle_pi_payload(payload)
         finally:
             code = proc.poll()
+            if code is None:
+                try:
+                    code = proc.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    code = proc.poll()
             if self.running:
                 self.last_error = f"Pi backend exited with code {code}."
                 for request_id in list(self.pending):
                     self._reply_pending(request_id, {"ok": False, "error": self.last_error})
-                self.broadcast({"type": "error", "message": self.last_error})
-                self.broadcast({"type": "backend_exited", "exitCode": code})
                 self.is_generating = False
+                self.current_response = ""
+                self.broadcast({"type": "error", "message": self.last_error, "state": self.snapshot_state()})
+                self.broadcast({"type": "backend_exited", "exitCode": code, "state": self.snapshot_state()})
+                self.schedule_pi_restart(self.last_error)
 
     def _read_pi_stderr(self) -> None:
         proc = self.pi_proc

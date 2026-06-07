@@ -33,6 +33,7 @@ Item {
   property bool commandsLoading: false
   property bool modelChangeInProgress: false
   property int backendRetryAttempts: 0
+  property bool suppressNextEventsExit: false
 
   property var pendingCommandCallback: null
   property string pendingCommandName: ""
@@ -477,14 +478,20 @@ Item {
     availableModels = [];
     availableCommands = builtinSlashCommands();
     backendStatus = tr("chat.backendStarting") || "Starting backend...";
+    if (eventsProcess.running) {
+      suppressNextEventsExit = true;
+      eventsProcess.signal(15);
+    }
     Quickshell.execDetached(helperCommandArgs("daemon", null, 0));
     subscribeStartTimer.restart();
     stateRefreshTimer.restart();
+    backendStartupWatchdogTimer.restart();
   }
 
   function markBackendReady() {
     backendRetryAttempts = 0;
     backendRetryTimer.stop();
+    backendStartupWatchdogTimer.stop();
   }
 
   function scheduleBackendRetry(reason) {
@@ -517,8 +524,10 @@ Item {
     availableModels = [];
     availableCommands = builtinSlashCommands();
     backendStatus = tr("chat.backendRestarting") || "Restarting backend...";
-    if (eventsProcess.running)
+    if (eventsProcess.running) {
+      suppressNextEventsExit = true;
       eventsProcess.signal(15);
+    }
     Quickshell.execDetached(helperCommandArgs("command", { "command": "shutdown" }, 1));
     backendRestartTimer.restart();
   }
@@ -948,6 +957,9 @@ Item {
         } else {
           backendStatus = backendReady ? (tr("chat.backendReady") || "Backend ready") : (tr("chat.backendNotReady") || "Backend not ready");
         }
+      } else if (type === "status") {
+        backendStatus = event.message || backendStatus;
+        backendReady = event.state?.backendReady ?? backendReady;
       } else if (type === "backend_log") {
         Logger.w("[pi-assistant-panel]", event.message || "");
       } else if (type === "backend_exited") {
@@ -1005,6 +1017,17 @@ Item {
     interval: 700
     repeat: false
     onTriggered: root.startBackend()
+  }
+
+  readonly property Timer backendStartupWatchdogTimer: Timer {
+    interval: 7000
+    repeat: false
+    onTriggered: {
+      if (!root.backendReady) {
+        root.startingBackend = false;
+        root.scheduleBackendRetry("backend startup timed out");
+      }
+    }
   }
 
   readonly property Timer repinTimer: Timer {
@@ -1131,6 +1154,10 @@ Item {
     }
 
     onExited: function (exitCode, exitStatus) {
+      if (root.suppressNextEventsExit) {
+        root.suppressNextEventsExit = false;
+        return;
+      }
       if (exitCode !== 0) {
         root.backendReady = false;
         root.startingBackend = false;

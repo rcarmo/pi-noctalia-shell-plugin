@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import qs.Commons
+import qs.Widgets
 
 FloatingWindow {
   id: root
@@ -31,6 +32,16 @@ FloatingWindow {
       pluginApi.pluginSettings.panelHeightRatio = Math.max(0.1, Math.min(1, (root.height || root.implicitHeight) / screen.height));
     pluginApi.saveSettings();
   }
+
+  function closeWindow() {
+    persistSize();
+    if (mainInstance?.closeStandaloneWindow)
+      mainInstance.closeStandaloneWindow();
+    else
+      visible = false;
+  }
+
+  onClosed: closeWindow()
 
   Timer {
     id: persistSizeTimer
@@ -179,6 +190,35 @@ FloatingWindow {
       cursorShape: Qt.SizeFDiagCursor
       acceptedButtons: Qt.LeftButton
       onPressed: root.startSystemResize(Qt.LeftEdge | Qt.TopEdge)
+    }
+
+    Rectangle {
+      id: closeButton
+      anchors.top: parent.top
+      anchors.right: parent.right
+      anchors.margins: Math.max(4, Style.marginXS)
+      width: Math.max(22 * Style.uiScaleRatio, root.dragHandleHeight)
+      height: width
+      radius: width / 2
+      color: closeMouse.containsMouse ? Qt.alpha(Color.mError, 0.18) : "transparent"
+      z: 10
+
+      NIcon {
+        anchors.centerIn: parent
+        icon: "x"
+        color: closeMouse.containsMouse ? Color.mError : Color.mOnSurfaceVariant
+        pointSize: Style.fontSizeS
+        applyUiScale: false
+      }
+
+      MouseArea {
+        id: closeMouse
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.closeWindow()
+      }
     }
   }
 }
